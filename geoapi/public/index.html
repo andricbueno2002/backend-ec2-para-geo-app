@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoApp — Panel de Rastreo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #1a1a2e; color: #eee; height: 100vh; }
+
+        /* LOGIN */
+        #loginScreen {
+            display: flex; align-items: center; justify-content: center;
+            height: 100vh; background: #1a1a2e;
+        }
+        .login-box {
+            background: #16213e; padding: 40px; border-radius: 12px;
+            width: 360px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .login-box h1 { text-align: center; margin-bottom: 8px; color: #4fc3f7; font-size: 28px; }
+        .login-box p  { text-align: center; margin-bottom: 28px; color: #888; font-size: 14px; }
+        .login-box input {
+            width: 100%; padding: 12px; margin-bottom: 16px;
+            background: #0f3460; border: 1px solid #4fc3f7;
+            border-radius: 8px; color: #eee; font-size: 15px;
+        }
+        .login-box button {
+            width: 100%; padding: 13px; background: #4fc3f7;
+            border: none; border-radius: 8px; color: #1a1a2e;
+            font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+        .login-box button:hover { background: #81d4fa; }
+        #loginError { color: #ef5350; text-align: center; margin-top: 12px; font-size: 14px; }
+
+        /* PANEL PRINCIPAL */
+        #mainScreen { display: none; height: 100vh; flex-direction: column; }
+
+        /* HEADER */
+        .header {
+            background: #16213e; padding: 12px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 2px solid #4fc3f7;
+        }
+        .header h1 { color: #4fc3f7; font-size: 20px; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .live-indicator {
+            display: flex; align-items: center; gap: 6px;
+            background: #0f3460; padding: 6px 12px; border-radius: 20px;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        .btn-logout {
+            background: #ef5350; border: none; color: white;
+            padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;
+        }
+
+        /* CONTENIDO */
+        .content { display: flex; flex: 1; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 320px; background: #16213e; padding: 16px;
+            overflow-y: auto; border-right: 1px solid #0f3460;
+        }
+        .sidebar h3 { color: #4fc3f7; margin-bottom: 12px; font-size: 15px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+        .form-group input, .form-group select {
+            width: 100%; padding: 9px; background: #0f3460;
+            border: 1px solid #4fc3f7; border-radius: 6px; color: #eee; font-size: 13px;
+        }
+        .btn-primary {
+            width: 100%; padding: 10px; background: #4fc3f7;
+            border: none; border-radius: 8px; color: #1a1a2e;
+            font-weight: bold; cursor: pointer; font-size: 14px; margin-bottom: 8px;
+        }
+        .btn-primary:hover { background: #81d4fa; }
+        .btn-realtime {
+            width: 100%; padding: 10px; background: #4caf50;
+            border: none; border-radius: 8px; color: white;
+            font-weight: bold; cursor: pointer; font-size: 14px;
+        }
+        .btn-realtime.active { background: #ef5350; }
+
+        /* STATS */
+        .stats { margin-top: 16px; }
+        .stat-card {
+            background: #0f3460; border-radius: 8px; padding: 12px;
+            margin-bottom: 8px; border-left: 3px solid #4fc3f7;
+        }
+        .stat-card .label { font-size: 11px; color: #aaa; }
+        .stat-card .value { font-size: 18px; font-weight: bold; color: #4fc3f7; }
+
+        /* MAPA */
+        #map { flex: 1; }
+
+        /* INFO BOX */
+        .info-box {
+            position: absolute; bottom: 20px; right: 20px; z-index: 1000;
+            background: rgba(22,33,62,0.95); padding: 12px 16px;
+            border-radius: 10px; border: 1px solid #4fc3f7;
+            font-size: 13px; min-width: 200px;
+        }
+        .info-box .coord { color: #4fc3f7; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+    <div class="login-box">
+        <h1>🌍 GeoApp</h1>
+        <p>Panel de Rastreo GPS</p>
+        <input type="text" id="username" placeholder="Usuario" />
+        <input type="password" id="password" placeholder="Contraseña" />
+        <button onclick="login()">Ingresar</button>
+        <div id="loginError"></div>
+    </div>
+</div>
+
+<!-- PANEL PRINCIPAL -->
+<div id="mainScreen">
+    <div class="header">
+        <h1>🌍 GeoApp — Panel de Rastreo</h1>
+        <div class="header-right">
+            <div class="live-indicator">
+                <div class="dot"></div>
+                <span id="liveStatus">En vivo</span>
+            </div>
+            <button class="btn-logout" onclick="logout()">Cerrar sesión</button>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <h3>📡 Tiempo Real</h3>
+            <div class="form-group">
+                <label>Dispositivo</label>
+                <select id="deviceSelect"></select>
+            </div>
+            <button class="btn-realtime" id="btnRealtime" onclick="toggleRealtime()">
+                ▶ Iniciar Tiempo Real
+            </button>
+
+            <hr style="border-color:#0f3460; margin: 16px 0;">
+
+            <h3>📅 Historial</h3>
+            <div class="form-group">
+                <label>Desde</label>
+                <input type="datetime-local" id="fromDate" />
+            </div>
+            <div class="form-group">
+                <label>Hasta</label>
+                <input type="datetime-local" id="toDate" />
+            </div>
+            <button class="btn-primary" onclick="loadHistory()">🔍 Ver Historial</button>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="label">Último registro</div>
+                    <div class="value" id="statLastSeen">—</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Puntos en mapa</div>
+                    <div class="value" id="statPoints">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Velocidad actual</div>
+                    <div class="value" id="statSpeed">0 km/h</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAPA -->
+        <div id="map"></div>
+    </div>
+</div>
+
+<!-- INFO BOX -->
+<div class="info-box" id="infoBox" style="display:none">
+    <div>📍 Última posición</div>
+    <div class="coord" id="infoCoords">—</div>
+    <div id="infoTime" style="color:#aaa; font-size:11px; margin-top:4px;">—</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let token = localStorage.getItem('geoToken');
+    let map, realtimeInterval, polyline, currentMarker;
+    let isRealtime = false;
+    let trackPoints = [];
+
+    // ── AUTH ──────────────────────────────────────────────
+    async function login() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (data.token) {
+                token = data.token;
+                localStorage.setItem('geoToken', token);
+                showPanel();
+            } else {
+                document.getElementById('loginError').textContent = '❌ ' + data.error;
+            }
+        } catch (e) {
+            document.getElementById('loginError').textContent = '❌ Error de conexión';
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('geoToken');
+        location.reload();
+    }
+
+    // ── INICIAR PANEL ─────────────────────────────────────
+    function showPanel() {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('mainScreen').style.display = 'flex';
+        initMap();
+        loadDevices();
+        setDefaultDates();
+    }
+
+    function initMap() {
+        map = L.map('map').setView([-12.0464, -77.0428], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+    }
+
+    function setDefaultDates() {
+        const now   = new Date();
+        const from  = new Date(now - 3600000); // 1 hora atrás
+        document.getElementById('toDate').value   = toLocalInput(now);
+        document.getElementById('fromDate').value = toLocalInput(from);
+    }
+
+    function toLocalInput(date) {
+        const d = new Date(date - date.getTimezoneOffset() * 60000);
+        return d.toISOString().slice(0, 16);
+    }
+
+    // ── DISPOSITIVOS ──────────────────────────────────────
+    async function loadDevices() {
+        const res  = await fetch('/api/dashboard/devices', {
+            headers: { Authorization: 'Bearer ' + token }
+        });
+        const data = await res.json();
+        const sel  = document.getElementById('deviceSelect');
+        sel.innerHTML = '';
+        data.data.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.device_id;
+            opt.textContent = d.device_id;
+            sel.appendChild(opt);
+        });
+    }
+
+    // ── TIEMPO REAL ───────────────────────────────────────
+    function toggleRealtime() {
+        isRealtime = !isRealtime;
+        const btn = document.getElementById('btnRealtime');
+        if (isRealtime) {
+            btn.textContent = '⏹ Detener Tiempo Real';
+            btn.classList.add('active');
+            fetchLatest();
+            realtimeInterval = setInterval(fetchLatest, 10000);
+        } else {
+            btn.textContent = '▶ Iniciar Tiempo Real';
+            btn.classList.remove('active');
+            clearInterval(realtimeInterval);
+        }
+    }
+
+    async function fetchLatest() {
+        try {
+            const res  = await fetch('/api/dashboard/latest', {
+                headers: { Authorization: 'Bearer ' + token }
+            });
+            const data = await res.json();
+            if (data.data && data.data.length > 0) {
+                const loc = data.data.find(
+                    d => d.device_id === document.getElementById('deviceSelect').value
+                ) || data.data[0];
+                updateMarker(loc);
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    function updateMarker(loc) {
+        const latlng = [parseFloat(loc.latitude), parseFloat(loc.longitude)];
+
+        if (currentMarker) map.removeLayer(currentMarker);
+
+        currentMarker = L.circleMarker(latlng, {
+            radius: 10, fillColor: '#4fc3f7',
+            color: '#fff', weight: 2, fillOpacity: 1
+        }).addTo(map).bindPopup(
+            `<b>${loc.device_id}</b><br>` +
+            `Lat: ${parseFloat(loc.latitude).toFixed(6)}<br>` +
+            `Lng: ${parseFloat(loc.longitude).toFixed(6)}<br>` +
+            `Vel: ${(loc.speed * 3.6).toFixed(1)} km/h<br>` +
+            `<small>${new Date(loc.timestamp).toLocaleString()}</small>`
+        );
+
+        map.panTo(latlng);
+
+        // Info box
+        document.getElementById('infoBox').style.display = 'block';
+        document.getElementById('infoCoords').textContent =
+            `${parseFloat(loc.latitude).toFixed(6)}, ${parseFloat(loc.longitude).toFixed(6)}`;
+        document.getElementById('infoTime').textContent =
+            new Date(loc.timestamp).toLocaleString();
+        document.getElementById('statLastSeen').textContent =
+            new Date(loc.timestamp).toLocaleTimeString();
+        document.getElementById('statSpeed').textContent =
+            (loc.speed * 3.6).toFixed(1) + ' km/h';
+    }
+
+    // ── HISTORIAL ─────────────────────────────────────────
+    async function loadHistory() {
+        const device = document.getElementById('deviceSelect').value;
+        const from   = document.getElementById('fromDate').value;
+        const to     = document.getElementById('toDate').value;
+
+        if (!device || !from || !to) {
+            alert('Selecciona dispositivo, fecha inicio y fecha fin');
+            return;
+        }
+
+        try {
+            const res  = await fetch(
+                `/api/dashboard/track?device_id=${device}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+                { headers: { Authorization: 'Bearer ' + token } }
+            );
+            const data = await res.json();
+
+            if (!data.data || data.data.length === 0) {
+                alert('No hay datos en ese rango de fechas');
+                return;
+            }
+
+            drawTrack(data.data);
+            document.getElementById('statPoints').textContent = data.data.length;
+
+        } catch(e) {
+            alert('Error al cargar historial');
+        }
+    }
+
+    function drawTrack(points) {
+        // Limpiar mapa
+        if (polyline) map.removeLayer(polyline);
+        if (currentMarker) map.removeLayer(currentMarker);
+
+        const latlngs = points.map(p => [
+            parseFloat(p.latitude), parseFloat(p.longitude)
+        ]);
+
+        // Dibujar línea del recorrido
+        polyline = L.polyline(latlngs, {
+            color: '#4fc3f7', weight: 3, opacity: 0.8
+        }).addTo(map);
+
+        // Marcador inicio (verde)
+        L.circleMarker(latlngs[0], {
+            radius: 10, fillColor: '#4caf50',
+            color: '#fff', weight: 2, fillOpacity: 1
+        }).addTo(map).bindPopup(
+            `🟢 Inicio<br><small>${new Date(points[0].timestamp).toLocaleString()}</small>`
+        );
+
+        // Marcador fin (rojo)
+        L.circleMarker(latlngs[latlngs.length - 1], {
+            radius: 10, fillColor: '#ef5350',
+            color: '#fff', weight: 2, fillOpacity: 1
+        }).addTo(map).bindPopup(
+            `🔴 Fin<br><small>${new Date(points[points.length-1].timestamp).toLocaleString()}</small>`
+        );
+
+        map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+    }
+
+    // ── INICIAR ───────────────────────────────────────────
+    if (token) {
+        showPanel();
+    }
+
+    // Enter en login
+    document.addEventListener('keypress', e => {
+        if (e.key === 'Enter' && document.getElementById('loginScreen').style.display !== 'none') {
+            login();
+        }
+    });
+</script>
+</body>
+</html>
